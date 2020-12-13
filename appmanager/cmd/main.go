@@ -163,7 +163,7 @@ func (hn *handler) launchAction(req actionReq) error {
 			}
 		}
 	}
-	return fmt.Errorf("Action not found: %s %s", req.App, req.Action)
+	return fmt.Errorf("action not found: %s %s", req.App, req.Action)
 }
 
 func (hn *handler) installHelmChart(path string) error {
