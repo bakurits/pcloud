@@ -15,6 +15,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -51,49 +52,49 @@ type handler struct {
 	launcher app.Launcher
 }
 
-func (hn *handler) handleInstall(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		_, err := io.WriteString(w, helmUploadPage)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	} else if r.Method == "POST" {
-		r.ParseMultipartForm(1000000)
-		file, handler, err := r.FormFile("chartfile")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer file.Close()
-		tmp := uuid.New().String()
-		if tmp == "" {
-			http.Error(w, "Could not generate temp dir", http.StatusInternalServerError)
-			return
-		}
-		p := "/tmp/" + tmp
-		// TODO(giolekva): defer rmdir
-		if err := syscall.Mkdir(p, 0777); err != nil {
-			http.Error(w, "Could not create temp dir", http.StatusInternalServerError)
-			return
-		}
-		p += "/" + handler.Filename
-		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE, 0666)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		defer f.Close()
-		_, err = io.Copy(f, file)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if err = hn.installHelmChart(p); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Write([]byte("Installed"))
+func (hn *handler) handleInstallGet(w http.ResponseWriter, r *http.Request) {
+	_, err := io.WriteString(w, helmUploadPage)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (hn *handler) handleInstallPost(w http.ResponseWriter, r *http.Request) {
+	r.ParseMultipartForm(1000000)
+	file, handler, err := r.FormFile("chartfile")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+	tmp := uuid.New().String()
+	if tmp == "" {
+		http.Error(w, "Could not generate temp dir", http.StatusInternalServerError)
+		return
+	}
+	p := "/tmp/" + tmp
+	// TODO(giolekva): defer rmdir
+	if err := syscall.Mkdir(p, 0777); err != nil {
+		http.Error(w, "Could not create temp dir", http.StatusInternalServerError)
+		return
+	}
+	p += "/" + handler.Filename
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer f.Close()
+	_, err = io.Copy(f, file)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err = hn.installHelmChart(p); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write([]byte("Installed"))
 }
 
 type trigger struct {
@@ -102,10 +103,6 @@ type trigger struct {
 }
 
 func (hn *handler) handleTriggers(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		http.Error(w, "Only GET method is supported on /triggers", http.StatusBadRequest)
-		return
-	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -241,10 +238,12 @@ func main() {
 		glog.Fatalf("Could ot initialize manager: %v", err)
 	}
 	glog.Info(manager)
-	h := handler{clientset, manager, app.NewK8sLauncher(clientset)}
-	http.HandleFunc("/triggers", h.handleTriggers)
-	http.HandleFunc("/launch_action", h.handleLaunchAction)
-	http.HandleFunc("/", h.handleInstall)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 
+	h := handler{clientset, manager, app.NewK8sLauncher(clientset)}
+	r := mux.NewRouter()
+	r.HandleFunc("/triggers", h.handleTriggers).Methods(http.MethodGet)
+	r.HandleFunc("/launch_action", h.handleLaunchAction)
+	r.HandleFunc("/", h.handleInstallGet).Methods(http.MethodGet)
+	r.HandleFunc("/", h.handleInstallPost).Methods(http.MethodPost)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), r))
 }
