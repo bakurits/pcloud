@@ -52,7 +52,7 @@ type handler struct {
 	launcher app.Launcher
 }
 
-func (hn *handler) handleInstallGet(w http.ResponseWriter, r *http.Request) {
+func (hn *handler) handleInstallGet(w http.ResponseWriter, _ *http.Request) {
 	_, err := io.WriteString(w, helmUploadPage)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -194,7 +194,7 @@ func (hn *handler) installHelmChart(path string) error {
 	} else {
 		glog.Info("Skipping deployment as we got library chart.")
 	}
-	hn.manager.Apps[h.Name] = app.App{h.Name, h.Namespace, h.Triggers, h.Actions}
+	hn.manager.Apps[h.Name] = app.App{Name: h.Name, Namespace: h.Namespace, Triggers: h.Triggers, Actions: h.Actions}
 	app.StoreManagerStateToFile(hn.manager, *managerStoreFile)
 	for _, a := range h.Init.PostInstall.CallAction {
 		if err := hn.launchAction(actionReq{a.App, a.Action, a.Args}); err != nil {
